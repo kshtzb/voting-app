@@ -1,0 +1,6 @@
+
+reorder_imports = true
+
+struct_lit_width = 60
+fn_call_width = 60
+merge_derives = true

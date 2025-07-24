@@ -1,76 +1,108 @@
-import * as anchor from '@coral-xyz/anchor'
-import { Program } from '@coral-xyz/anchor'
-import { Keypair } from '@solana/web3.js'
-import { Votingdapp } from '../target/types/votingdapp'
+import * as anchor from "@coral-xyz/anchor";
+import { BN, Program } from "@coral-xyz/anchor";
+import { Keypair, PublicKey } from "@solana/web3.js";
+import { Votingdapp } from "../target/types/votingdapp";
+import { BankrunProvider, startAnchor } from "anchor-bankrun";
+import { getVotingdappProgramId } from "@project/anchor";
 
-describe('votingdapp', () => {
-  // Configure the client to use the local cluster.
-  const provider = anchor.AnchorProvider.env()
-  anchor.setProvider(provider)
-  const payer = provider.wallet as anchor.Wallet
+const IDL = require("../target/idl/votingdapp.json");
 
-  const program = anchor.workspace.Votingdapp as Program<Votingdapp>
+const votingAddress = new PublicKey(
+  "AaM3YBsGJJUxUM77GVrwmf7YrAqcVpRpSEMcr7BBFb8g"
+);
 
-  const votingdappKeypair = Keypair.generate()
+describe("votingdapp", () => {
+  let context;
+  let provider;
+  //let votingProgram: Program<Votingdapp>;
+  anchor.setProvider(anchor.AnchorProvider.env());
+  let votingProgram = anchor.workspace.Votingdapp as Program<Votingdapp>;
 
-  it('Initialize Votingdapp', async () => {
-    await program.methods
-      .initialize()
-      .accounts({
-        votingdapp: votingdappKeypair.publicKey,
-        payer: payer.publicKey,
-      })
-      .signers([votingdappKeypair])
-      .rpc()
+  // beforeAll(async () => {
+  //   context = await startAnchor(
+  //     "",
+  //     [{ name: "votingdapp", programId: votingAddress }],
+  //     []
+  //   );
 
-    const currentCount = await program.account.votingdapp.fetch(votingdappKeypair.publicKey)
+  //   provider = new BankrunProvider(context);
 
-    expect(currentCount.count).toEqual(0)
-  })
+  //   votingProgram = new Program<Votingdapp>(IDL, provider);
+  // });
 
-  it('Increment Votingdapp', async () => {
-    await program.methods.increment().accounts({ votingdapp: votingdappKeypair.publicKey }).rpc()
+  it("Initialize Poll", async () => {
+    await votingProgram.methods
+      .initializePoll(
+        new anchor.BN(1),
+        "What is fav type of peanut butter?",
+        new anchor.BN(0),
+        new anchor.BN(1742585447)
+      )
+      .rpc();
 
-    const currentCount = await program.account.votingdapp.fetch(votingdappKeypair.publicKey)
+    const [pollAddress] = PublicKey.findProgramAddressSync(
+      [new anchor.BN(1).toArrayLike(Buffer, "le", 8)],
+      votingAddress
+    );
 
-    expect(currentCount.count).toEqual(1)
-  })
+    const poll = await votingProgram.account.poll.fetch(pollAddress);
 
-  it('Increment Votingdapp Again', async () => {
-    await program.methods.increment().accounts({ votingdapp: votingdappKeypair.publicKey }).rpc()
+    console.log(poll);
 
-    const currentCount = await program.account.votingdapp.fetch(votingdappKeypair.publicKey)
+    expect(poll.pollId.toNumber()).toEqual(1);
+    expect(poll.description).toEqual(
+      "What is fav type of peanut butter?"
+    );
+    expect(poll.pollStart.toNumber()).toBeLessThan(poll.pollEnd.toNumber());
+  });
 
-    expect(currentCount.count).toEqual(2)
-  })
+  it("initialize candidate", async () => {
+    await votingProgram.methods
+      .initializeCandidate("Crunchy", new anchor.BN(1))
+      .rpc();
 
-  it('Decrement Votingdapp', async () => {
-    await program.methods.decrement().accounts({ votingdapp: votingdappKeypair.publicKey }).rpc()
+    await votingProgram.methods
+      .initializeCandidate("Smooth", new anchor.BN(1))
+      .rpc();
 
-    const currentCount = await program.account.votingdapp.fetch(votingdappKeypair.publicKey)
+    const [crunchyAddress] = PublicKey.findProgramAddressSync(
+      [new anchor.BN(1).toArrayLike(Buffer, "le", 8), Buffer.from("Crunchy")],
+      votingAddress
+    );
 
-    expect(currentCount.count).toEqual(1)
-  })
+    const crunchyCandidate = await votingProgram.account.candidate.fetch(
+      crunchyAddress
+    );
+    console.log(crunchyCandidate);
 
-  it('Set votingdapp value', async () => {
-    await program.methods.set(42).accounts({ votingdapp: votingdappKeypair.publicKey }).rpc()
+    expect(crunchyCandidate.candidateVotes.toNumber()).toEqual(0);
 
-    const currentCount = await program.account.votingdapp.fetch(votingdappKeypair.publicKey)
+    const [smoothAddress] = PublicKey.findProgramAddressSync(
+      [new anchor.BN(1).toArrayLike(Buffer, "le", 8), Buffer.from("Smooth")],
+      votingAddress
+    );
 
-    expect(currentCount.count).toEqual(42)
-  })
+    const smoothCandidate = await votingProgram.account.candidate.fetch(
+      smoothAddress
+    );
+    console.log(smoothCandidate);
 
-  it('Set close the votingdapp account', async () => {
-    await program.methods
-      .close()
-      .accounts({
-        payer: payer.publicKey,
-        votingdapp: votingdappKeypair.publicKey,
-      })
-      .rpc()
+    expect(smoothCandidate.candidateVotes.toNumber()).toEqual(0);
+  });
 
-    // The account should no longer exist, returning null.
-    const userAccount = await program.account.votingdapp.fetchNullable(votingdappKeypair.publicKey)
-    expect(userAccount).toBeNull()
-  })
-})
+  it.only("vote", async () => {
+    await votingProgram.methods.vote("Smooth", new anchor.BN(1)).rpc();
+
+    const [smoothAddress] = PublicKey.findProgramAddressSync(
+      [new anchor.BN(1).toArrayLike(Buffer, "le", 8), Buffer.from("Smooth")],
+      votingAddress
+    );
+
+    const smoothCandidate = await votingProgram.account.candidate.fetch(
+      smoothAddress
+    );
+    console.log(smoothCandidate);
+
+    //expect(smoothCandidate.candidateVotes.toNumber()).toEqual(5);
+  });
+});

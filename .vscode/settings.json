@@ -1,0 +1,11 @@
+{
+  "rust-analyzer.linkedProjects": [
+    "anchor/programs/votingdapp/Cargo.toml",
+    "anchor/Cargo.toml"
+  ],
+  "editor.formatOnSave": true,
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer"
+  },
+  "rust-analyzer.rustfmt.enable": true
+}
